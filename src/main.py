@@ -1,4 +1,3 @@
-from configs import configure_argument_parser
 import logging
 import re
 from urllib.parse import urljoin
@@ -7,7 +6,7 @@ import requests_cache
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-from constants import BASE_DIR, MAIN_DOC_URL, PEP_URL, EXPECTED_STATUS
+from constants import BASE_DIR, MAIN_DOC_URL, PEP_URL
 from configs import configure_argument_parser, configure_logging
 from outputs import control_output
 from utils import get_response, find_tag, get_result
@@ -131,26 +130,18 @@ MODE_TO_FUNCTION = {
 
 
 def main():
-    # Запускаем функцию с конфигурацией логов.
     configure_logging()
-    # Отмечаем в логах момент запуска программы.
     logging.info('Парсер запущен!')
-
     arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
     args = arg_parser.parse_args()
-    # Логируем переданные аргументы командной строки.
     logging.info(f'Аргументы командной строки: {args}')
-
     session = requests_cache.CachedSession()
     if args.clear_cache:
         session.cache.clear()
-
     parser_mode = args.mode
     results = MODE_TO_FUNCTION[parser_mode](session)
-
     if results is not None:
         control_output(results, args)
-    # Логируем завершение работы парсера.
     logging.info('Парсер завершил работу.')
 
 
