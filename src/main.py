@@ -95,25 +95,25 @@ def download(session):
 def pep(session):
     errors = []
     statuses = defaultdict(int)
-    try:
-        for element in tqdm(get_soup(session, PEP_URL).find_all(
-            'table', attrs={'class': 'pep-zero-table docutils align-default'}
-        )):
-            for row in tqdm(element.find_all('tr')):
-                status = row.find('abbr')
-                if status is not None:
-                    table_status = status.text[1:]
-                else:
-                    table_status = ''
-                a_tag = row.find('a')
-                if a_tag is not None:
-                    pep_link = urljoin(PEP_URL, a_tag['href'])
-                    soup = get_soup(session, pep_link)
-                    status_tag = soup.find(string='Status')
-                    page_status = status_tag.find_next('abbr').text
-                else:
-                    continue
-                expected_status = EXPECTED_STATUS.get(table_status)
+    for element in tqdm(get_soup(session, PEP_URL).find_all(
+        'table', attrs={'class': 'pep-zero-table docutils align-default'}
+    )):
+        for row in tqdm(element.find_all('tr')):
+            status = row.find('abbr')
+            if status is not None:
+                table_status = status.text[1:]
+            else:
+                table_status = ''
+            a_tag = row.find('a')
+            if a_tag is not None:
+                pep_link = urljoin(PEP_URL, a_tag['href'])
+                soup = get_soup(session, pep_link)
+                status_tag = soup.find(string='Status')
+                page_status = status_tag.find_next('abbr').text
+            else:
+                continue
+            expected_status = EXPECTED_STATUS.get(table_status)
+            try:
                 if page_status not in expected_status:
                     raise ValueError(UNEXPECTED_PEP_STATUS_ERROR.format(
                             pep_link=pep_link,
@@ -121,11 +121,9 @@ def pep(session):
                             expected_status=expected_status
                         )
                     )
-                statuses[page_status] += 1
-    except ConnectionError as e:
-        errors.append((e))
-    except ValueError as e:
-        errors.append((e))
+            except ValueError as e:
+                errors.append((e))
+            statuses[page_status] += 1
     if errors:
         for error in errors:
             logging.exception(error)
