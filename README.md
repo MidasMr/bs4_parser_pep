@@ -101,8 +101,4 @@ beautifulsoup4
 
 
 Автор:
-```
-Александр Вязников 
-```
-github:
-[![Anurag's GitHub stats](https://github-readme-stats.vercel.app/api?username=MidasMr)](https://github.com/anuraghazra/github-readme-stats)
+[Александр Вязников(MidasMr)](https://github.com/MidasMr)
