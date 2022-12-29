@@ -103,10 +103,7 @@ def pep(session):
             a_tag = row.find('a')
             if a_tag is not None:
                 pep_link = urljoin(PEP_URL, a_tag['href'])
-                try:
-                    soup = get_soup(session, pep_link)
-                except RequestException as e:
-                    request_errors.append((e, pep_link))
+                soup = get_soup(session, pep_link)
                 status_tag = soup.find(string='Status')
                 page_status = status_tag.find_next('abbr').text
             else:
