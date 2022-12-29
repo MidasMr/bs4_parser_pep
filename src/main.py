@@ -95,11 +95,11 @@ def download(session):
 def pep(session):
     errors = []
     statuses = defaultdict(int)
-    for element in tqdm(get_soup(session, PEP_URL).find_all(
-        'table', attrs={'class': 'pep-zero-table docutils align-default'}
-    )):
-        for row in tqdm(element.find_all('tr')):
-            try:
+    try:
+        for element in tqdm(get_soup(session, PEP_URL).find_all(
+            'table', attrs={'class': 'pep-zero-table docutils align-default'}
+        )):
+            for row in tqdm(element.find_all('tr')):
                 status = row.find('abbr')
                 if status is not None:
                     table_status = status.text[1:]
@@ -122,10 +122,10 @@ def pep(session):
                         )
                     )
                 statuses[page_status] += 1
-            except ConnectionError as e:
-                errors.append((e))
-            except ValueError as e:
-                errors.append((e))
+    except ConnectionError as e:
+        errors.append((e))
+    except ValueError as e:
+        errors.append((e))
     if errors:
         for error in errors:
             logging.exception(error)
