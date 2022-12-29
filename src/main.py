@@ -1,3 +1,4 @@
+from collections import defaultdict
 import logging
 import re
 from urllib.parse import urljoin
@@ -10,8 +11,11 @@ from configs import configure_argument_parser, configure_logging
 from outputs import control_output
 from utils import find_tag, get_soup
 
+
 COMMAND_ARGS_INFO_MESSAGE = 'Аргументы командной строки: {args}'
 DOWNLOAD_INFO_MESSAGE = 'Архив был загружен и сохранён: {archive_path}'
+PARSER_START_MESSAGE = 'Парсер запущен!'
+PARSER_FINISH_MESSAGE = 'Парсер завершил работу.'
 ERROR_MESSAGE = 'Произошла ошибка в работе парсера: {error}'
 REQUEST_ERROR_MESSAGE = 'Возникла ошибка при загрузке страницы {url}'
 UNEXPECTED_PEP_STATUS_ERROR = (
@@ -24,15 +28,18 @@ UNEXPECTED_PEP_STATUS_ERROR = (
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    soup = get_soup(session, whats_new_url)
-    sections_by_python = soup.select(
-        '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
-    )
     results = [('Ссылка на статью', 'Заголовок', 'Редактор, Автор')]
-    for section in tqdm(sections_by_python):
+    connection_errors = []
+    for section in tqdm(get_soup(
+        session, whats_new_url
+    ).select('#what-s-new-in-python div.toctree-wrapper li.toctree-l1')):
         version_a_tag = find_tag(section, 'a')
         version_link = urljoin(whats_new_url, version_a_tag['href'])
-        soup = get_soup(session, version_link)
+        try:
+            soup = get_soup(session, version_link)
+        except ConnectionError as e:
+            connection_errors.append((e, version_link))
+            continue
         results.append(
             (
                 version_link,
@@ -40,14 +47,16 @@ def whats_new(session):
                 find_tag(soup, 'dl').text.replace('\n', ' ')
             )
         )
+    if connection_errors:
+        for error, url in connection_errors:
+            logging.exception(REQUEST_ERROR_MESSAGE.format(url=url))
     return results
 
 
 def latest_versions(session):
-    soup = get_soup(session, MAIN_DOC_URL)
-    sidebar = find_tag(soup, 'div', {'class': 'sphinxsidebarwrapper'})
-    ul_tags = sidebar.find_all('ul')
-    for ul in ul_tags:
+    for ul in find_tag(get_soup(
+        session, MAIN_DOC_URL
+    ), 'div', {'class': 'sphinxsidebarwrapper'}).find_all('ul'):
         if 'All versions' in ul.text:
             a_tags = ul.find_all('a')
             break
@@ -69,11 +78,9 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    soup = get_soup(session, downloads_url)
-    pdf_a4_tag = soup.select_one(
+    pdf_a4_link = get_soup(session, downloads_url).select_one(
         'div[role="main"] table.docutils a[href*="pdf-a4.zip"]'
-    )
-    pdf_a4_link = pdf_a4_tag['href']
+    )['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
     filename = archive_url.split('/')[-1]
     downloads_dir = BASE_DIR / 'downloads'
@@ -86,47 +93,42 @@ def download(session):
 
 
 def pep(session):
-    soup = get_soup(session, PEP_URL)
-    all_tables = soup.find_all(
+    errors = []
+    statuses = defaultdict(int)
+    for element in tqdm(get_soup(session, PEP_URL).find_all(
         'table', attrs={'class': 'pep-zero-table docutils align-default'}
-    )
-    result = []
-    request_errors = []
-    for element in tqdm(all_tables):
+    )):
         for row in tqdm(element.find_all('tr')):
-            status = row.find('abbr')
-            if status is not None:
-                table_status = status.text[1:]
-            else:
-                table_status = ''
-            a_tag = row.find('a')
-            if a_tag is not None:
-                pep_link = urljoin(PEP_URL, a_tag['href'])
-                soup = get_soup(session, pep_link)
-                status_tag = soup.find(string='Status')
-                page_status = status_tag.find_next('abbr').text
-            else:
-                continue
-            result.append((table_status, page_status, pep_link))
-    if request_errors:
-        for error, url in request_errors:
-            logging.error(REQUEST_ERROR_MESSAGE.format(url=url))
-    statuses = {}
-    for table_status, page_status, pep_link in result:
-        expected_status = EXPECTED_STATUS.get(table_status)
-        if page_status not in expected_status:
-            logging.error(
-                UNEXPECTED_PEP_STATUS_ERROR.format(
-                    pep_link=pep_link,
-                    page_status=page_status,
-                    expected_status=expected_status
-                )
-            )
-            continue
-        if page_status in statuses:
-            statuses[page_status] += 1
-        else:
-            statuses[page_status] = 1
+            try:
+                status = row.find('abbr')
+                if status is not None:
+                    table_status = status.text[1:]
+                else:
+                    table_status = ''
+                a_tag = row.find('a')
+                if a_tag is not None:
+                    pep_link = urljoin(PEP_URL, a_tag['href'])
+                    soup = get_soup(session, pep_link)
+                    status_tag = soup.find(string='Status')
+                    page_status = status_tag.find_next('abbr').text
+                else:
+                    continue
+                expected_status = EXPECTED_STATUS.get(table_status)
+                if page_status not in expected_status:
+                    raise ValueError(UNEXPECTED_PEP_STATUS_ERROR.format(
+                            pep_link=pep_link,
+                            page_status=page_status,
+                            expected_status=expected_status
+                        )
+                    )
+                statuses[page_status] += 1
+            except ConnectionError as e:
+                errors.append((e))
+            except ValueError as e:
+                errors.append((e))
+    if errors:
+        for error in errors:
+            logging.exception(error)
     return [
         ('Статус', 'Количество'),
         *statuses.items(),
@@ -145,7 +147,7 @@ MODE_TO_FUNCTION = {
 def main():
     try:
         configure_logging()
-        logging.info('Парсер запущен!')
+        logging.info(PARSER_START_MESSAGE)
         arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
         args = arg_parser.parse_args()
         logging.info(COMMAND_ARGS_INFO_MESSAGE.format(args=args))
@@ -157,8 +159,8 @@ def main():
         if results is not None:
             control_output(results, args)
     except Exception as e:
-        logging.error(ERROR_MESSAGE.format(error=e), stack_info=True)
-    logging.info('Парсер завершил работу.')
+        logging.exception(ERROR_MESSAGE.format(error=e))
+    logging.info(PARSER_FINISH_MESSAGE)
 
 
 if __name__ == '__main__':

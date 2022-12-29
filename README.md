@@ -23,7 +23,7 @@ python3 -m venv env
 ```
 
 
-Ms Windows
+Windows
 ```
 source venv/Scripts/activate
 ```
@@ -105,6 +105,4 @@ beautifulsoup4
 Александр Вязников 
 ```
 github:
-```
-https://github.com/MidasMr
-```
+[![Anurag's GitHub stats](https://github-readme-stats.vercel.app/api?username=MidasMr)](https://github.com/anuraghazra/github-readme-stats)
