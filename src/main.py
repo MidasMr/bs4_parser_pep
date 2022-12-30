@@ -29,16 +29,20 @@ UNEXPECTED_PEP_STATUS_ERROR = (
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
     results = [('Ссылка на статью', 'Заголовок', 'Редактор, Автор')]
-    connection_errors = []
+    errors = []
     for section in tqdm(get_soup(
         session, whats_new_url
-    ).select('#what-s-new-in-python div.toctree-wrapper li.toctree-l1')):
+    ).select(
+        '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
+    )):
         version_a_tag = find_tag(section, 'a')
         version_link = urljoin(whats_new_url, version_a_tag['href'])
         try:
             soup = get_soup(session, version_link)
-        except ConnectionError as e:
-            connection_errors.append((e, version_link))
+        except ConnectionError:
+            errors.append(
+                ConnectionError(REQUEST_ERROR_MESSAGE.format(url=version_link))
+            )
             continue
         results.append(
             (
@@ -47,16 +51,19 @@ def whats_new(session):
                 find_tag(soup, 'dl').text.replace('\n', ' ')
             )
         )
-    if connection_errors:
-        for error, url in connection_errors:
-            logging.exception(REQUEST_ERROR_MESSAGE.format(url=url))
+    for error in errors:
+        logging.exception(error)
     return results
 
 
 def latest_versions(session):
-    for ul in find_tag(get_soup(
-        session, MAIN_DOC_URL
-    ), 'div', {'class': 'sphinxsidebarwrapper'}).find_all('ul'):
+    for ul in find_tag(
+        get_soup(session, MAIN_DOC_URL),
+        'div',
+        {'class': 'sphinxsidebarwrapper'}
+    ).find_all(
+        'ul'
+    ):
         if 'All versions' in ul.text:
             a_tags = ul.find_all('a')
             break
@@ -95,38 +102,45 @@ def download(session):
 def pep(session):
     errors = []
     statuses = defaultdict(int)
-    for element in tqdm(get_soup(session, PEP_URL).find_all(
+    elements = []
+    for element in (get_soup(session, PEP_URL).find_all(
         'table', attrs={'class': 'pep-zero-table docutils align-default'}
     )):
-        for row in tqdm(element.find_all('tr')):
-            status = row.find('abbr')
-            if status is not None:
-                table_status = status.text[1:]
-            else:
-                table_status = ''
-            a_tag = row.find('a')
-            if a_tag is not None:
-                pep_link = urljoin(PEP_URL, a_tag['href'])
-                soup = get_soup(session, pep_link)
-                status_tag = soup.find(string='Status')
-                page_status = status_tag.find_next('abbr').text
-            else:
-                continue
-            expected_status = EXPECTED_STATUS.get(table_status)
+        for row in (element.find_all('tr')):
+            elements.append(row)
+    for row in tqdm(elements):
+        status = row.find('abbr')
+        if status is not None:
+            table_status = status.text[1:]
+        else:
+            table_status = ''
+        a_tag = row.find('a')
+        if a_tag is not None:
+            pep_link = urljoin(PEP_URL, a_tag['href'])
             try:
-                if page_status not in expected_status:
-                    raise ValueError(UNEXPECTED_PEP_STATUS_ERROR.format(
-                            pep_link=pep_link,
-                            page_status=page_status,
-                            expected_status=expected_status
-                        )
-                    )
-            except ValueError as e:
-                errors.append((e))
-            statuses[page_status] += 1
-    if errors:
-        for error in errors:
-            logging.exception(error)
+                soup = get_soup(session, pep_link)
+            except ConnectionError:
+                errors.append(
+                    ConnectionError(REQUEST_ERROR_MESSAGE.format(url=pep_link))
+                )
+                continue
+            status_tag = soup.find(string='Status')
+            page_status = status_tag.find_next('abbr').text
+        else:
+            continue
+        expected_status = EXPECTED_STATUS.get(table_status)
+        if page_status not in expected_status:
+            errors.append(ValueError(
+                UNEXPECTED_PEP_STATUS_ERROR.format(
+                    pep_link=pep_link,
+                    page_status=page_status,
+                    expected_status=expected_status
+                )
+            ))
+            continue
+        statuses[page_status] += 1
+    for error in errors:
+        logging.exception(error)
     return [
         ('Статус', 'Количество'),
         *statuses.items(),

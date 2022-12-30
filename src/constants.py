@@ -13,7 +13,9 @@ LOF_FILE = LOG_DIR / 'parser.log'
 
 # Настройки
 DATETIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
-OUTPUT_MODES = ('pretty', 'file')
+PRETTY_TABLE_OUTPUT = 'pretty'
+FILE_OUTPUT = 'file'
+OUTPUT_MODES = (PRETTY_TABLE_OUTPUT, FILE_OUTPUT)
 
 # Константы для расчетов
 EXPECTED_STATUS = {
