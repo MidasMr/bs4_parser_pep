@@ -40,9 +40,7 @@ def whats_new(session):
         try:
             soup = get_soup(session, version_link)
         except ConnectionError:
-            errors.append(
-                ConnectionError(REQUEST_ERROR_MESSAGE.format(url=version_link))
-            )
+            errors.append(REQUEST_ERROR_MESSAGE.format(url=version_link))
             continue
         results.append(
             (
@@ -52,7 +50,7 @@ def whats_new(session):
             )
         )
     for error in errors:
-        logging.exception(error)
+        logging.error(error, stack_info=True)
     return results
 
 
@@ -106,8 +104,7 @@ def pep(session):
     for element in (get_soup(session, PEP_URL).find_all(
         'table', attrs={'class': 'pep-zero-table docutils align-default'}
     )):
-        for row in (element.find_all('tr')):
-            elements.append(row)
+        elements.extend(element.find_all('tr'))
     for row in tqdm(elements):
         status = row.find('abbr')
         if status is not None:
@@ -120,9 +117,7 @@ def pep(session):
             try:
                 soup = get_soup(session, pep_link)
             except ConnectionError:
-                errors.append(
-                    ConnectionError(REQUEST_ERROR_MESSAGE.format(url=pep_link))
-                )
+                errors.append(REQUEST_ERROR_MESSAGE.format(url=pep_link))
                 continue
             status_tag = soup.find(string='Status')
             page_status = status_tag.find_next('abbr').text
@@ -130,17 +125,17 @@ def pep(session):
             continue
         expected_status = EXPECTED_STATUS.get(table_status)
         if page_status not in expected_status:
-            errors.append(ValueError(
+            errors.append(
                 UNEXPECTED_PEP_STATUS_ERROR.format(
                     pep_link=pep_link,
                     page_status=page_status,
                     expected_status=expected_status
                 )
-            ))
+            )
             continue
         statuses[page_status] += 1
     for error in errors:
-        logging.exception(error)
+        logging.error(error)
     return [
         ('Статус', 'Количество'),
         *statuses.items(),
